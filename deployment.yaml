@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mariadb
+  labels:
+    app: mariadb
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  # Banco de dados em PVC RWO: com RollingUpdate o kustomize/Deployment pode
+  # subir um 2º pod antes de matar o 1º, e os dois abrem o mesmo datadir ->
+  # corrupção. `Recreate` garante um pod por vez. (No cluster hoje está a
+  # strategy padrão RollingUpdate — este é o principal ajuste vs. o publicado.)
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mariadb
+  template:
+    metadata:
+      labels:
+        app: mariadb
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: mariadb
+          image: mariadb:11.8
+          args:
+            # buffer pool 256M deixa ~256Mi de folga dentro do limite de 512Mi
+            # para o resto do mysqld.
+            - "--innodb-buffer-pool-size=256M"
+          envFrom:
+            - configMapRef:
+                name: mariadb-config
+            - secretRef:
+                name: mariadb-secret
+          ports:
+            - name: mysql
+              containerPort: 3306
+          volumeMounts:
+            - name: mariadb-storage
+              mountPath: /var/lib/mysql
+          livenessProbe:
+            exec:
+              command: ["healthcheck.sh", "--connect"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["healthcheck.sh", "--connect"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          # Valores REAIS no cluster (ajustados à mão via Lens). O manifesto
+          # anterior versionado pedia requests 500m/512Mi e limits 1/1Gi.
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "200m"
+              memory: "512Mi"
+      volumes:
+        - name: mariadb-storage
+          persistentVolumeClaim:
+            claimName: mariadb-data

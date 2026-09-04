@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: mariadb
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - sealed-secret.yaml      # gerado via kubeseal a partir de secret.local.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - networkpolicy.yaml
+
+# Labels recomendadas do Kubernetes. O Lens agrupa recursos em "Applications"
+# pela label app.kubernetes.io/instance (+ name) presente nos objetos de workload.
+# includeSelectors: false  -> nao altera spec.selector.matchLabels (campo imutavel).
+# includeTemplates: true   -> propaga para o pod template (pods aparecem sob a app).
+labels:
+  - pairs:
+      app.kubernetes.io/name: mariadb
+      app.kubernetes.io/instance: mariadb
+      app.kubernetes.io/component: database
+      app.kubernetes.io/part-of: mariadb
+      app.kubernetes.io/managed-by: kustomize
+    includeSelectors: false
+    includeTemplates: true

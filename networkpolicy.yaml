@@ -1,0 +1,61 @@
+# ATENÇÃO: o CNI deste cluster é o Flannel, que NÃO implementa NetworkPolicy.
+# Estas regras ficam como intenção declarativa até instalar um enforcer
+# (kubernetes-sigs/kube-network-policies, Calico policy-only) ou migrar p/ Cilium.
+# Mesma ressalva dos repos n8n / minio / nextcloud-asis / mcp-server / evolution.
+---
+# 1. Nega todo tráfego (entrada e saída) por padrão no namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress", "Egress"]
+---
+# 2. Ingress: só o Nextcloud (pod web + pod do CronJob, namespace `nextcloud`)
+#    conecta na 3306. É o único consumidor do MariaDB no cluster.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mariadb-allow-ingress-from-nextcloud
+spec:
+  podSelector:
+    matchLabels:
+      app: mariadb
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: nextcloud
+          podSelector:
+            matchLabels:
+              app: nextcloud
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: nextcloud
+          podSelector:
+            matchLabels:
+              app: nextcloud-cron
+      ports:
+        - protocol: TCP
+          port: 3306
+---
+# 3. Egress: só DNS. O MariaDB não precisa falar com mais nada.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mariadb-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: mariadb
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
