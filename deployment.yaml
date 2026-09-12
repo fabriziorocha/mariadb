@@ -26,8 +26,8 @@ spec:
         - name: mariadb
           image: mariadb:11.8
           args:
-            # buffer pool 256M deixa ~256Mi de folga dentro do limite de 512Mi
-            # para o resto do mysqld.
+            # buffer pool 256M + ~overhead do mysqld => steady ~330Mi observado.
+            # O limite de 1Gi é folga para picos de conexões/temp tables/mysqldump.
             - "--innodb-buffer-pool-size=256M"
           envFrom:
             - configMapRef:
@@ -50,15 +50,15 @@ spec:
               command: ["healthcheck.sh", "--connect"]
             initialDelaySeconds: 10
             periodSeconds: 10
-          # Valores REAIS no cluster (ajustados à mão via Lens). O manifesto
-          # anterior versionado pedia requests 500m/512Mi e limits 1/1Gi.
+          # Uso observado (Prometheus/lens-metrics, 2d): pico ~330Mi / ~41m —
+          # 330/512Mi = 64% do limit antigo, pouca folga p/ pico de conexões.
+          # Sem limit de CPU: um mysqldump/bulk-op não deve ser estrangulado.
           resources:
             requests:
               cpu: "100m"
-              memory: "256Mi"
+              memory: "384Mi"
             limits:
-              cpu: "200m"
-              memory: "512Mi"
+              memory: "1Gi"
       volumes:
         - name: mariadb-storage
           persistentVolumeClaim:
